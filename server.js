@@ -10,7 +10,7 @@ const fs    = require('fs');
 const path  = require('path');
 const { URL } = require('url');
 
-const PORT     = 8686;
+const PORT     = process.env.PORT || 8686;
 const BASE_API = 'https://api.septa.org/api';
 const CACHE_MS = 10000;
 

@@ -1,0 +1,12 @@
+{
+  "name": "septa-trainer",
+  "version": "1.0.0",
+  "description": "Kate's SEPTA Train Finder",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

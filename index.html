@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kate's Train Finder</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #05050e;
+  --surface:  #0c0d1c;
+  --card:     #121326;
+  --card2:    #1a1b2e;
+  --border:   rgba(255,255,255,0.08);
+  --text:     #f0eff5;
+  --muted:    #6e6e84;
+  --green:    #34d475;
+  --yellow:   #f5c021;
+  --red:      #f55060;
+  --blue:     #5b9cf6;
+  --morning:  #f5a623;
+  --evening:  #7c6ff5;
+  --r:        14px;
+}
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+/* ─── Background layer ─────────────────────────────────────────── */
+#bg-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+/* gradient sky */
+.bg-sky {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 20% 0%, rgba(30,50,130,0.22) 0%, transparent 70%),
+              radial-gradient(ellipse 60% 50% at 85% 5%, rgba(100,80,200,0.12) 0%, transparent 65%),
+              linear-gradient(180deg, #05050e 0%, #080b1a 60%, #060810 100%);
+}
+
+/* horizon city-light warmth */
+.bg-horizon {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 180px;
+  background: linear-gradient(to top, rgba(50,80,200,0.07) 0%, transparent 100%);
+}
+
+/* speed streaks */
+.streak {
+  position: absolute;
+  height: 1px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(91,156,246,0.18) 40%, rgba(91,156,246,0.06) 70%, transparent 100%);
+  animation: streakSlide linear infinite;
+}
+.streak:nth-child(1) { top: 18%; width: 38%; animation-duration: 4.2s; animation-delay: 0s; }
+.streak:nth-child(2) { top: 30%; width: 52%; animation-duration: 3.6s; animation-delay: 1.1s; }
+.streak:nth-child(3) { top: 44%; width: 28%; animation-duration: 5.1s; animation-delay: 2.4s; }
+.streak:nth-child(4) { top: 57%; width: 43%; animation-duration: 4.7s; animation-delay: 0.6s; }
+.streak:nth-child(5) { top: 68%; width: 33%; animation-duration: 3.9s; animation-delay: 3.0s; }
+.streak:nth-child(6) { top: 78%; width: 60%; animation-duration: 4.4s; animation-delay: 1.7s; }
+@keyframes streakSlide {
+  from { transform: translateX(110vw); opacity: 0; }
+  12%  { opacity: 1; }
+  85%  { opacity: 1; }
+  to   { transform: translateX(-110vw); opacity: 0; }
+}
+
+/* track rails */
+.track-svg {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  width: 100%; height: 22px;
+}
+
+/* train container */
+.train-layer {
+  position: absolute;
+  bottom: 4px;
+  left: 0; right: 0;
+  height: 92px;
+}
+.train-svg {
+  position: absolute;
+  bottom: 0;
+  width: 895px;
+  height: 92px;
+  opacity: 0.17;
+}
+.train-1 { animation: trainMove 36s linear infinite; }
+.train-2 { animation: trainMove 36s linear 18s infinite; }
+@keyframes trainMove {
+  from { transform: translateX(105vw); }
+  to   { transform: translateX(calc(-895px - 8vw)); }
+}
+
+/* window flicker */
+@keyframes winFlicker {
+  0%,92%,100% { opacity: 0.68; }
+  93%          { opacity: 0.38; }
+  95%          { opacity: 0.62; }
+  97%          { opacity: 0.25; }
+  99%          { opacity: 0.68; }
+}
+.win-flicker { animation: winFlicker 8s linear infinite; }
+.win-flicker-b { animation: winFlicker 8s linear 4s infinite; }
+
+/* ─── App shell ────────────────────────────────────────────────── */
+#app {
+  max-width: 500px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top,18px) 0 env(safe-area-inset-bottom,28px);
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Header ───────────────────────────────────────────────────── */
+.app-header { padding: 18px 20px 0; }
+.app-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.app-title em { font-style: normal; color: var(--blue); }
+.app-tagline {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+/* ─── Mode tabs ────────────────────────────────────────────────── */
+.mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 20px 0; }
+.mode-tab {
+  padding: 12px 10px;
+  border-radius: var(--r);
+  border: 1.5px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 15px; font-weight: 700; color: var(--muted);
+  transition: all 0.2s; text-align: center;
+}
+.mode-tab[data-mode="morning"].active {
+  border-color: rgba(245,166,35,0.7);
+  color: var(--morning);
+  background: rgba(245,166,35,0.09);
+  box-shadow: 0 0 18px rgba(245,166,35,0.08) inset, 0 0 24px rgba(245,166,35,0.06);
+}
+.mode-tab[data-mode="evening"].active {
+  border-color: rgba(124,111,245,0.7);
+  color: var(--evening);
+  background: rgba(124,111,245,0.1);
+  box-shadow: 0 0 18px rgba(124,111,245,0.09) inset, 0 0 24px rgba(124,111,245,0.06);
+}
+
+/* ─── Route card ───────────────────────────────────────────────── */
+.route-card {
+  margin: 12px 20px 0;
+  background: rgba(18,19,38,0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.route-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.route-row + .route-row { border-top: 1px solid var(--border); }
+.route-badge { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); width: 34px; flex-shrink: 0; }
+.route-icon { font-size: 18px; flex-shrink: 0; }
+.route-station-name { flex: 1; font-size: 15px; font-weight: 600; }
+.route-station-sub  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.route-change {
+  font-size: 12px; color: var(--blue); font-weight: 600;
+  padding: 4px 8px; border-radius: 6px;
+  background: rgba(91,156,246,0.1);
+  border: 1px solid rgba(91,156,246,0.22);
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.route-change:active { background: rgba(91,156,246,0.2); }
+.route-arrow { padding: 2px 16px 0 62px; color: var(--muted); font-size: 13px; }
+
+/* ─── Dest picker ──────────────────────────────────────────────── */
+#dest-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  align-items: flex-end;
+}
+#dest-overlay.open { display: flex; }
+.dest-sheet {
+  background: var(--surface);
+  border-radius: 22px 22px 0 0;
+  padding: 20px 0 env(safe-area-inset-bottom,20px);
+  width: 100%; max-height: 70vh;
+  display: flex; flex-direction: column;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.dest-sheet-title { padding: 0 20px 12px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.09em; }
+.dest-search { margin: 0 16px 12px; padding: 10px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 15px; outline: none; transition: border-color 0.15s; }
+.dest-search:focus { border-color: rgba(91,156,246,0.4); }
+.dest-search::placeholder { color: var(--muted); }
+#dest-list { overflow-y: auto; flex: 1; }
+.dest-item { padding: 13px 20px; font-size: 15px; font-weight: 500; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.dest-item:active { background: var(--card2); }
+.dest-item.preset { color: var(--blue); font-weight: 700; }
+.dest-cancel { margin: 8px 16px 0; padding: 12px; border-radius: 10px; background: var(--card2); color: var(--muted); font-size: 15px; font-weight: 600; width: calc(100% - 32px); transition: background 0.15s; }
+.dest-cancel:active { background: rgba(255,255,255,0.06); }
+
+/* ─── Find button ──────────────────────────────────────────────── */
+.find-wrap { padding: 16px 20px 0; }
+#find-btn {
+  width: 100%; padding: 17px;
+  border-radius: var(--r);
+  font-size: 17px; font-weight: 800;
+  color: #fff; background: var(--blue);
+  box-shadow: 0 8px 32px rgba(91,156,246,0.32);
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+#find-btn:active { transform: scale(0.98); opacity: 0.88; }
+#find-btn:disabled { opacity: 0.5; transform: none; }
+#find-btn[data-mode="morning"] {
+  background: linear-gradient(135deg, #f5a623, #e07a10);
+  box-shadow: 0 8px 32px rgba(245,166,35,0.3);
+}
+#find-btn[data-mode="evening"] {
+  background: linear-gradient(135deg, #7c6ff5, #5040d8);
+  box-shadow: 0 8px 32px rgba(124,111,245,0.32);
+}
+
+/* ─── Status ───────────────────────────────────────────────────── */
+#status { padding: 10px 20px 0; font-size: 13px; color: var(--muted); min-height: 20px; text-align: center; }
+
+/* ─── Results ──────────────────────────────────────────────────── */
+#results { display: none; flex-direction: column; padding: 12px 20px 0; }
+#results.show { display: flex; }
+.results-meta { display: flex; justify-content: space-between; align-items: center; padding: 2px 0 10px; }
+.results-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+#refresh-btn { font-size: 13px; font-weight: 700; color: var(--blue); padding: 4px 8px; }
+
+/* ─── Station card ─────────────────────────────────────────────── */
+.stn-card {
+  background: rgba(18,19,38,0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.stn-head { padding: 13px 16px 10px; }
+.stn-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.stn-name { font-size: 17px; font-weight: 800; }
+.stn-dist { font-size: 13px; font-weight: 700; color: var(--blue); }
+.stn-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ─── Train rows ───────────────────────────────────────────────── */
+.train-row {
+  display: grid; grid-template-columns: 10px 1fr;
+  gap: 0 12px; padding: 11px 16px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  align-items: start;
+}
+.t-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.dot-green  { background: var(--green); box-shadow: 0 0 10px rgba(52,212,117,0.75), 0 0 22px rgba(52,212,117,0.25); }
+.dot-yellow { background: var(--yellow); box-shadow: 0 0 8px rgba(245,192,33,0.55); }
+.dot-red    { background: var(--red); opacity: 0.4; }
+
+.t-body { display: flex; flex-direction: column; gap: 3px; }
+.t-times { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.t-depart { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.t-depart.catchable { color: var(--text); }
+.t-depart.tight     { color: var(--yellow); }
+.t-depart.missed    { color: var(--muted); text-decoration: line-through; }
+.t-arrow  { font-size: 14px; color: var(--muted); }
+.t-arrive { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-arrive.catchable { color: var(--green); }
+.t-arrive.tight     { color: var(--yellow); }
+.t-arrive.missed    { color: var(--muted); text-decoration: line-through; }
+.t-meta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1px; }
+.t-status-ok   { color: var(--green); font-weight: 700; }
+.t-status-late { color: var(--yellow); font-weight: 700; }
+.t-status-gone { color: var(--red); opacity: 0.6; font-weight: 700; }
+.t-duration    { background: rgba(255,255,255,0.06); border-radius: 4px; padding: 1px 5px; }
+
+/* ─── Max bar ──────────────────────────────────────────────────── */
+.max-bar {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 16px;
+  background: rgba(91,156,246,0.05);
+  border-top: 1px solid rgba(91,156,246,0.12);
+}
+.max-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.max-text { font-size: 13px; line-height: 1.65; color: var(--muted); }
+.max-text strong { color: var(--text); }
+.max-text .max-highlight { color: var(--blue); font-weight: 700; }
+.max-text .max-warn { color: var(--yellow); font-weight: 700; }
+
+/* ─── Empty / error ────────────────────────────────────────────── */
+.empty-row { padding: 16px; font-size: 14px; color: var(--muted); text-align: center; }
+
+/* ─── Spinner ──────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { width: 19px; height: 19px; border: 2.5px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.65s linear infinite; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ BACKGROUND LAYER ═══════════════ -->
+<div id="bg-layer" aria-hidden="true">
+  <div class="bg-sky"></div>
+  <div class="bg-horizon"></div>
+
+  <!-- Speed streaks -->
+  <div class="streak"></div>
+  <div class="streak"></div>
+  <div class="streak"></div>
+  <div class="streak"></div>
+  <div class="streak"></div>
+  <div class="streak"></div>
+
+  <!-- Track rails at bottom -->
+  <svg class="track-svg" viewBox="0 0 400 22" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <line x1="0" y1="7"  x2="400" y2="7"  stroke="rgba(91,120,246,0.2)" stroke-width="1.5"/>
+    <line x1="0" y1="13" x2="400" y2="13" stroke="rgba(91,120,246,0.2)" stroke-width="1.5"/>
+    <g stroke="rgba(91,120,246,0.1)" stroke-width="1.2" stroke-linecap="round">
+      <line x1="6"   y1="5" x2="6"   y2="15"/>
+      <line x1="16"  y1="5" x2="16"  y2="15"/>
+      <line x1="26"  y1="5" x2="26"  y2="15"/>
+      <line x1="36"  y1="5" x2="36"  y2="15"/>
+      <line x1="46"  y1="5" x2="46"  y2="15"/>
+      <line x1="56"  y1="5" x2="56"  y2="15"/>
+      <line x1="66"  y1="5" x2="66"  y2="15"/>
+      <line x1="76"  y1="5" x2="76"  y2="15"/>
+      <line x1="86"  y1="5" x2="86"  y2="15"/>
+      <line x1="96"  y1="5" x2="96"  y2="15"/>
+      <line x1="106" y1="5" x2="106" y2="15"/>
+      <line x1="116" y1="5" x2="116" y2="15"/>
+      <line x1="126" y1="5" x2="126" y2="15"/>
+      <line x1="136" y1="5" x2="136" y2="15"/>
+      <line x1="146" y1="5" x2="146" y2="15"/>
+      <line x1="156" y1="5" x2="156" y2="15"/>
+      <line x1="166" y1="5" x2="166" y2="15"/>
+      <line x1="176" y1="5" x2="176" y2="15"/>
+      <line x1="186" y1="5" x2="186" y2="15"/>
+      <line x1="196" y1="5" x2="196" y2="15"/>
+      <line x1="206" y1="5" x2="206" y2="15"/>
+      <line x1="216" y1="5" x2="216" y2="15"/>
+      <line x1="226" y1="5" x2="226" y2="15"/>
+      <line x1="236" y1="5" x2="236" y2="15"/>
+      <line x1="246" y1="5" x2="246" y2="15"/>
+      <line x1="256" y1="5" x2="256" y2="15"/>
+      <line x1="266" y1="5" x2="266" y2="15"/>
+      <line x1="276" y1="5" x2="276" y2="15"/>
+      <line x1="286" y1="5" x2="286" y2="15"/>
+      <line x1="296" y1="5" x2="296" y2="15"/>
+      <line x1="306" y1="5" x2="306" y2="15"/>
+      <line x1="316" y1="5" x2="316" y2="15"/>
+      <line x1="326" y1="5" x2="326" y2="15"/>
+      <line x1="336" y1="5" x2="336" y2="15"/>
+      <line x1="346" y1="5" x2="346" y2="15"/>
+      <line x1="356" y1="5" x2="356" y2="15"/>
+      <line x1="366" y1="5" x2="366" y2="15"/>
+      <line x1="376" y1="5" x2="376" y2="15"/>
+      <line x1="386" y1="5" x2="386" y2="15"/>
+      <line x1="396" y1="5" x2="396" y2="15"/>
+    </g>
+  </svg>
+
+  <!-- Animated trains -->
+  <div class="train-layer">
+
+    <!-- SEPTA train SVG (reused twice with offset timing) -->
+    <svg class="train-svg train-1" viewBox="0 0 895 92" preserveAspectRatio="xMinYMax meet" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#152060"/>
+          <stop offset="100%" stop-color="#0a1240"/>
+        </linearGradient>
+        <linearGradient id="stripeG" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stop-color="#1a5ec8"/>
+          <stop offset="100%" stop-color="#1248a0"/>
+        </linearGradient>
+        <filter id="wg" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+
+      <!-- ground glow -->
+      <ellipse cx="448" cy="91" rx="440" ry="5" fill="rgba(60,100,220,0.07)"/>
+
+      <!-- ── REAR END CAR (x=0–280) ── -->
+      <path d="M0,38 L12,22 L280,22 L280,75 L12,75 L0,62 Z" fill="url(#bodyG)"/>
+      <path d="M0,38 L12,22 L12,75 L0,62 Z" fill="#0a1035"/>
+      <rect x="12" y="22" width="268" height="7" rx="2" fill="#1e2d6e"/>
+      <rect x="12" y="48" width="268" height="7" fill="url(#stripeG)"/>
+      <!-- rear marker lights -->
+      <circle cx="4" cy="44" r="3" fill="#ff4444" opacity="0.75"/>
+      <circle cx="4" cy="55" r="2" fill="#ff8800" opacity="0.5"/>
+      <!-- windows (6) -->
+      <rect x="20"  y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"   filter="url(#wg)"/>
+      <rect x="58"  y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="96"  y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="134" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="172" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="210" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="244" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.55" class="win-flicker"/>
+      <!-- undercarriage -->
+      <rect x="15" y="75" width="260" height="5" rx="1" fill="#080f2a"/>
+      <!-- bogies -->
+      <rect x="38" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="46"  cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="66"  cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="188" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="196" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="216" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+
+      <!-- coupling -->
+      <rect x="280" y="42" width="18" height="16" rx="2" fill="#080f2a"/>
+
+      <!-- ── MIDDLE CAR (x=298–589) ── -->
+      <rect x="298" y="22" width="291" height="53" rx="2" fill="url(#bodyG)"/>
+      <rect x="298" y="22" width="291" height="7" rx="2" fill="#1e2d6e"/>
+      <rect x="298" y="48" width="291" height="7" fill="url(#stripeG)"/>
+      <!-- windows (7) -->
+      <rect x="305" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="343" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="381" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="419" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="457" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="495" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="533" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="555" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.55" class="win-flicker"/>
+      <!-- undercarriage -->
+      <rect x="302" y="75" width="283" height="5" rx="1" fill="#080f2a"/>
+      <!-- bogies -->
+      <rect x="330" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="338" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="358" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="498" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="506" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="526" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+
+      <!-- coupling -->
+      <rect x="589" y="42" width="18" height="16" rx="2" fill="#080f2a"/>
+
+      <!-- ── FRONT CAB CAR (x=607–895) ── -->
+      <path d="M607,22 L880,22 L895,36 L895,64 L880,75 L607,75 Z" fill="url(#bodyG)"/>
+      <path d="M880,22 L895,36 L895,64 L880,75 Z" fill="#0a1035"/>
+      <rect x="607" y="22" width="273" height="7" rx="2" fill="#1e2d6e"/>
+      <rect x="607" y="48" width="273" height="7" fill="url(#stripeG)"/>
+      <!-- pantograph on roof -->
+      <line x1="770" y1="22" x2="770" y2="14" stroke="#1a2860" stroke-width="1.5"/>
+      <line x1="755" y1="14" x2="785" y2="14" stroke="#1a2860" stroke-width="2"/>
+      <line x1="762" y1="14" x2="770" y2="9"  stroke="#1a2860" stroke-width="1.5"/>
+      <line x1="778" y1="14" x2="770" y2="9"  stroke="#1a2860" stroke-width="1.5"/>
+      <line x1="760" y1="9"  x2="780" y2="9"  stroke="#1a2860" stroke-width="1.5"/>
+      <!-- cab window (driver) -->
+      <rect x="858" y="29" width="23" height="19" rx="3" fill="#80c8e8" opacity="0.45" filter="url(#wg)"/>
+      <!-- headlights -->
+      <circle cx="891" cy="40" r="4"   fill="#fffce0" opacity="0.95" filter="url(#wg)"/>
+      <circle cx="891" cy="57" r="2.5" fill="#fffce0" opacity="0.7"/>
+      <!-- windows (7) -->
+      <rect x="614" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="652" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="690" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="728" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="766" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="804" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="838" y="30" width="18" height="15" rx="2.5" fill="#f0c030" opacity="0.55" class="win-flicker"/>
+      <!-- undercarriage -->
+      <rect x="610" y="75" width="270" height="5" rx="1" fill="#080f2a"/>
+      <!-- bogies -->
+      <rect x="638" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="646" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="666" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="808" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="816" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="836" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+    </svg>
+
+    <!-- Second train (offset timing) — identical SVG -->
+    <svg class="train-svg train-2" viewBox="0 0 895 92" preserveAspectRatio="xMinYMax meet" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bodyG2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#152060"/>
+          <stop offset="100%" stop-color="#0a1240"/>
+        </linearGradient>
+        <linearGradient id="stripeG2" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stop-color="#1a5ec8"/>
+          <stop offset="100%" stop-color="#1248a0"/>
+        </linearGradient>
+        <filter id="wg2" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <ellipse cx="448" cy="91" rx="440" ry="5" fill="rgba(60,100,220,0.07)"/>
+      <!-- REAR END CAR -->
+      <path d="M0,38 L12,22 L280,22 L280,75 L12,75 L0,62 Z" fill="url(#bodyG2)"/>
+      <path d="M0,38 L12,22 L12,75 L0,62 Z" fill="#0a1035"/>
+      <rect x="12" y="22" width="268" height="7" rx="2" fill="#1e2d6e"/>
+      <rect x="12" y="48" width="268" height="7" fill="url(#stripeG2)"/>
+      <circle cx="4" cy="44" r="3" fill="#ff4444" opacity="0.75"/>
+      <circle cx="4" cy="55" r="2" fill="#ff8800" opacity="0.5"/>
+      <rect x="20"  y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b" filter="url(#wg2)"/>
+      <rect x="58"  y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="96"  y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="134" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="172" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="210" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="244" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.55" class="win-flicker-b"/>
+      <rect x="15" y="75" width="260" height="5" rx="1" fill="#080f2a"/>
+      <rect x="38" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="46"  cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="66"  cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="188" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="196" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="216" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="280" y="42" width="18" height="16" rx="2" fill="#080f2a"/>
+      <!-- MIDDLE CAR -->
+      <rect x="298" y="22" width="291" height="53" rx="2" fill="url(#bodyG2)"/>
+      <rect x="298" y="22" width="291" height="7" rx="2" fill="#1e2d6e"/>
+      <rect x="298" y="48" width="291" height="7" fill="url(#stripeG2)"/>
+      <rect x="305" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="343" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="381" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="419" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="457" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="495" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="533" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="555" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.55" class="win-flicker-b"/>
+      <rect x="302" y="75" width="283" height="5" rx="1" fill="#080f2a"/>
+      <rect x="330" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="338" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="358" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="498" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="506" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="526" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="589" y="42" width="18" height="16" rx="2" fill="#080f2a"/>
+      <!-- FRONT CAB CAR -->
+      <path d="M607,22 L880,22 L895,36 L895,64 L880,75 L607,75 Z" fill="url(#bodyG2)"/>
+      <path d="M880,22 L895,36 L895,64 L880,75 Z" fill="#0a1035"/>
+      <rect x="607" y="22" width="273" height="7" rx="2" fill="#1e2d6e"/>
+      <rect x="607" y="48" width="273" height="7" fill="url(#stripeG2)"/>
+      <line x1="770" y1="22" x2="770" y2="14" stroke="#1a2860" stroke-width="1.5"/>
+      <line x1="755" y1="14" x2="785" y2="14" stroke="#1a2860" stroke-width="2"/>
+      <line x1="762" y1="14" x2="770" y2="9"  stroke="#1a2860" stroke-width="1.5"/>
+      <line x1="778" y1="14" x2="770" y2="9"  stroke="#1a2860" stroke-width="1.5"/>
+      <line x1="760" y1="9"  x2="780" y2="9"  stroke="#1a2860" stroke-width="1.5"/>
+      <rect x="858" y="29" width="23" height="19" rx="3" fill="#80c8e8" opacity="0.45" filter="url(#wg2)"/>
+      <circle cx="891" cy="40" r="4"   fill="#fffce0" opacity="0.95" filter="url(#wg2)"/>
+      <circle cx="891" cy="57" r="2.5" fill="#fffce0" opacity="0.7"/>
+      <rect x="614" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="652" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="690" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="728" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="766" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker-b"/>
+      <rect x="804" y="30" width="28" height="15" rx="2.5" fill="#f0c030" opacity="0.68" class="win-flicker"/>
+      <rect x="838" y="30" width="18" height="15" rx="2.5" fill="#f0c030" opacity="0.55" class="win-flicker-b"/>
+      <rect x="610" y="75" width="270" height="5" rx="1" fill="#080f2a"/>
+      <rect x="638" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="646" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="666" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <rect x="808" y="76" width="44" height="6" rx="1" fill="#0c1540"/>
+      <circle cx="816" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+      <circle cx="836" cy="83" r="7" fill="#060c20" stroke="#1a2850" stroke-width="1.5"/>
+    </svg>
+
+  </div><!-- /train-layer -->
+</div><!-- /bg-layer -->
+
+
+<!-- ═══════════════ APP ═══════════════ -->
+<div id="app">
+
+  <header class="app-header">
+    <div class="app-title">Kate's <em>Train Finder</em></div>
+    <div class="app-tagline">SEPTA Regional Rail · Live Departures</div>
+  </header>
+
+  <!-- Mode tabs -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" data-mode="morning" onclick="setMode('morning')">☀️ Morning</button>
+    <button class="mode-tab"        data-mode="evening" onclick="setMode('evening')">🌙 Evening</button>
+  </div>
+
+  <!-- Route display -->
+  <div class="route-card">
+    <div class="route-row">
+      <span class="route-badge">FROM</span>
+      <span class="route-icon">📍</span>
+      <div>
+        <div class="route-station-name">Your Location</div>
+        <div class="route-station-sub">Nearest SEPTA stations</div>
+      </div>
+    </div>
+    <div class="route-arrow">↓</div>
+    <div class="route-row">
+      <span class="route-badge">TO</span>
+      <span class="route-icon" id="dest-icon">🏥</span>
+      <div style="flex:1">
+        <div class="route-station-name" id="dest-label">Penn Medicine</div>
+        <div class="route-station-sub" id="dest-sub">30th Street Station</div>
+      </div>
+      <button class="route-change" onclick="openDestPicker()">Change</button>
+    </div>
+  </div>
+
+  <!-- Find button -->
+  <div class="find-wrap">
+    <button id="find-btn" data-mode="morning" onclick="findTrains()">
+      ☀️ Find Morning Trains
+    </button>
+  </div>
+
+  <div id="status"></div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="results-meta">
+      <span class="results-label" id="results-label">Nearest Stations</span>
+      <button id="refresh-btn" onclick="findTrains()">↻ Refresh</button>
+    </div>
+    <div id="cards"></div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- Destination picker sheet -->
+<div id="dest-overlay" onclick="closeDestPicker(event)">
+  <div class="dest-sheet" onclick="event.stopPropagation()">
+    <div class="dest-sheet-title">Select Destination</div>
+    <input class="dest-search" id="dest-search" placeholder="Search stations…" oninput="filterDest(this.value)">
+    <div id="dest-list"></div>
+    <button class="dest-cancel" onclick="closeDestPicker()">Cancel</button>
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────
+const HOME = { lat: 40.1383, lng: -75.0649 }; // 302 Welsh Rd, Huntingdon Valley
+
+const MODES = {
+  morning: {
+    toStation:  '30th Street Station',
+    toLabel:    'Penn Medicine',
+    toIcon:     '🏥',
+    toSub:      '30th Street Station',
+    btnLabel:   '☀️ Find Morning Trains',
+    maxMode:    'dropoff',
+  },
+  evening: {
+    toStation:  'Bethayres',
+    toLabel:    'Home',
+    toIcon:     '🏡',
+    toSub:      'Bethayres Station',
+    btnLabel:   '🌙 Find Evening Trains',
+    maxMode:    'pickup',
+  },
+};
+
+const WALK_MPH    = 3.5;
+const DRIVE_MPH   = 15;   // Kate driving to station
+const MAX_MPH     = 25;   // Max driving from home
+const ROAD_FACTOR = 1.3;
+const BUFFER_MIN  = 2;
+const MAX_RADIUS  = 8;    // miles
+const MAX_STNS    = 5;
+
+let mode        = 'morning';
+let destStation = MODES.morning.toStation;
+let userLoc     = null;
+
+// ── All SEPTA Regional Rail stations with coords ────────────────
+const STATIONS = [
+  { name: '30th Street Station',  lat: 39.9565, lng: -75.1822 },
+  { name: 'Suburban Station',     lat: 39.9521, lng: -75.1680 },
+  { name: 'Jefferson',            lat: 39.9533, lng: -75.1561 },
+  { name: 'Market East',          lat: 39.9530, lng: -75.1467 },
+  { name: 'Temple University',    lat: 39.9796, lng: -75.1481 },
+  { name: 'North Broad',          lat: 39.9924, lng: -75.1601 },
+  { name: 'Fern Rock TC',         lat: 40.0342, lng: -75.1300 },
+  // West Trenton Line
+  { name: 'Rydal',                lat: 40.0853, lng: -75.0924 },
+  { name: 'Meadowbrook',          lat: 40.1010, lng: -75.0798 },
+  { name: 'Bethayres',            lat: 40.1163, lng: -75.0696 },
+  { name: 'Philmont',             lat: 40.0912, lng: -75.0584 },
+  { name: 'Forest Hills',         lat: 40.1043, lng: -75.0310 },
+  { name: 'Somerton',             lat: 40.1192, lng: -75.0011 },
+  { name: 'Trevose',              lat: 40.1395, lng: -74.9741 },
+  { name: 'Neshaminy Falls',      lat: 40.1615, lng: -74.9475 },
+  { name: 'Langhorne',            lat: 40.1755, lng: -74.9225 },
+  { name: 'Woodbourne',           lat: 40.1991, lng: -74.9001 },
+  { name: 'Yardley',              lat: 40.2423, lng: -74.8448 },
+  { name: 'West Trenton',         lat: 40.2469, lng: -74.8681 },
+  // Fox Chase Line
+  { name: 'Fox Chase',            lat: 40.0727, lng: -75.0851 },
+  { name: 'Ryers',                lat: 40.0635, lng: -75.0902 },
+  { name: 'Cheltenham',           lat: 40.0525, lng: -75.0995 },
+  { name: 'Lawndale',             lat: 40.0437, lng: -75.0936 },
+  { name: 'Olney',                lat: 40.0347, lng: -75.1117 },
+  // Jenkintown junction
+  { name: 'Jenkintown-Wyncote',   lat: 40.0954, lng: -75.1311 },
+  { name: 'Elkins Park',          lat: 40.0764, lng: -75.1275 },
+  { name: 'Melrose Park',         lat: 40.0647, lng: -75.1267 },
+  // Warminster Line
+  { name: 'Warminster',           lat: 40.2003, lng: -75.0952 },
+  { name: 'Hatboro',              lat: 40.1753, lng: -75.1039 },
+  { name: 'Willow Grove',         lat: 40.1440, lng: -75.1158 },
+  { name: 'Crestmont',            lat: 40.1271, lng: -75.1056 },
+  { name: 'Roslyn',               lat: 40.1195, lng: -75.1178 },
+  { name: 'Ardsley',              lat: 40.1069, lng: -75.1291 },
+  { name: 'Glenside',             lat: 40.1011, lng: -75.1522 },
+  { name: 'North Hills',          lat: 40.0971, lng: -75.1616 },
+  // Lansdale/Doylestown
+  { name: 'North Wales',          lat: 40.2118, lng: -75.2764 },
+  { name: 'Gwynedd Valley',       lat: 40.1881, lng: -75.2780 },
+  { name: 'Penllyn',              lat: 40.1769, lng: -75.2714 },
+  { name: 'Ambler',               lat: 40.1518, lng: -75.2269 },
+  { name: 'Fort Washington',      lat: 40.1433, lng: -75.2005 },
+  { name: 'Oreland',              lat: 40.1143, lng: -75.1779 },
+  { name: 'Lansdale',             lat: 40.2414, lng: -75.2838 },
+  { name: 'Pennbrook',            lat: 40.2329, lng: -75.2635 },
+  { name: 'Chalfont',             lat: 40.2898, lng: -75.2101 },
+  { name: 'New Britain',          lat: 40.2688, lng: -75.1869 },
+  { name: 'Doylestown',           lat: 40.3107, lng: -75.1299 },
+  // Chestnut Hill
+  { name: 'Chestnut Hill East',   lat: 40.0772, lng: -75.1934 },
+  { name: 'Chestnut Hill West',   lat: 40.0752, lng: -75.2034 },
+  { name: 'Stenton',              lat: 40.0635, lng: -75.1818 },
+  { name: 'Germantown',           lat: 40.0529, lng: -75.1811 },
+  { name: 'Washington Lane',      lat: 40.0448, lng: -75.1824 },
+  { name: 'Mount Airy',           lat: 40.0602, lng: -75.1960 },
+  { name: 'Allen Lane',           lat: 40.0679, lng: -75.1874 },
+  // Trenton Line
+  { name: 'Trenton',              lat: 40.2153, lng: -74.7697 },
+  { name: 'Princeton Junction',   lat: 40.3167, lng: -74.6265 },
+  { name: 'Levittown',            lat: 40.1580, lng: -74.8472 },
+  { name: 'Bristol',              lat: 40.1055, lng: -74.8516 },
+  { name: 'Croydon',              lat: 40.0869, lng: -74.9014 },
+  { name: 'Eddington',            lat: 40.0742, lng: -74.9289 },
+  { name: 'Cornwells Heights',    lat: 40.0784, lng: -74.9608 },
+  { name: 'Torresdale',           lat: 40.0672, lng: -74.9892 },
+  { name: 'Holmesburg Junction',  lat: 40.0503, lng: -75.0283 },
+  { name: 'Tacony',               lat: 40.0298, lng: -75.0508 },
+  { name: 'Bridesburg',           lat: 40.0095, lng: -75.0631 },
+  // Paoli/Thorndale
+  { name: 'Paoli',                lat: 40.0428, lng: -75.4816 },
+  { name: 'Malvern',              lat: 40.0362, lng: -75.5135 },
+  { name: 'Exton',                lat: 40.0270, lng: -75.6227 },
+  { name: 'Wayne',                lat: 40.0439, lng: -75.3865 },
+  { name: 'Berwyn',               lat: 40.0428, lng: -75.4378 },
+  { name: 'Radnor',               lat: 40.0472, lng: -75.3640 },
+  { name: 'Bryn Mawr',            lat: 40.0219, lng: -75.3105 },
+  { name: 'Ardmore',              lat: 40.0046, lng: -75.2931 },
+  { name: 'Wynnewood',            lat: 39.9989, lng: -75.2686 },
+  { name: 'Overbrook',            lat: 39.9880, lng: -75.2351 },
+  { name: 'University City',      lat: 39.9499, lng: -75.1919 },
+  // Media/Elwyn
+  { name: 'Media',                lat: 39.9185, lng: -75.3883 },
+  { name: 'Elwyn',                lat: 39.9052, lng: -75.4278 },
+  // Airport
+  { name: 'Philadelphia International Airport', lat: 39.8731, lng: -75.2424 },
+  // Wilmington
+  { name: 'Wilmington',           lat: 39.7361, lng: -75.5512 },
+  { name: 'Newark',               lat: 39.6834, lng: -75.7493 },
+];
+
+const STATION_MAP = new Map(STATIONS.map(s => [s.name, s]));
+const ALL_STATIONS = [...STATION_MAP.values()].sort((a,b) => a.name.localeCompare(b.name));
+
+// ── Geo math ────────────────────────────────────────────────────
+function haversine(a, b) {
+  const R = 3958.8;
+  const dL = (b.lat - a.lat) * Math.PI / 180;
+  const dN = (b.lng - a.lng) * Math.PI / 180;
+  const h  = Math.sin(dL/2)**2 + Math.cos(a.lat*Math.PI/180) * Math.cos(b.lat*Math.PI/180) * Math.sin(dN/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function travelMins(mi, mph) { return (mi / mph) * 60; }
+function maxDriveMins(distMi) { return (distMi * ROAD_FACTOR / MAX_MPH) * 60; }
+function fmtDist(mi) { return mi < 0.9 ? `${Math.round(mi*5280)} ft` : `${mi.toFixed(1)} mi`; }
+function fmtMin(m) { const r = Math.round(m); return r < 60 ? `${r} min` : `${Math.floor(r/60)}h ${r%60}m`; }
+
+// ── Time parsing ─────────────────────────────────────────────────
+function parseTrainTime(s) {
+  if (!s) return null;
+  const m = s.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]);
+  const min = parseInt(m[2]);
+  const ap = m[3].toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  const d = new Date();
+  d.setHours(h, min, 0, 0);
+  if (d - Date.now() < -3600 * 8 * 1000) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+function fmt12(d) {
+  if (!d) return '—';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function parseDelay(s) {
+  if (!s || /on.?time/i.test(s)) return 0;
+  const m = s.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+
+// ── Mode switching ───────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  const cfg = MODES[m];
+  destStation = cfg.toStation;
+
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === m));
+  document.getElementById('dest-icon').textContent  = cfg.toIcon;
+  document.getElementById('dest-label').textContent = cfg.toLabel;
+  document.getElementById('dest-sub').textContent   = cfg.toSub;
+
+  const btn = document.getElementById('find-btn');
+  btn.textContent = cfg.btnLabel;
+  btn.setAttribute('data-mode', m);
+
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('status').textContent = '';
+}
+
+// ── Destination picker ──────────────────────────────────────────
+function buildDestList(filter = '') {
+  const list = document.getElementById('dest-list');
+  const lower = filter.toLowerCase();
+
+  const presets = [
+    { name: '30th Street Station', label: '🏥 Penn Medicine' },
+    { name: 'Bethayres',           label: '🏡 Home (Bethayres)' },
+    { name: 'Suburban Station',    label: '🏙 Suburban Station' },
+    { name: 'Jefferson',           label: '🏙 Jefferson Station' },
+  ];
+
+  let html = '';
+  if (!filter) {
+    html += presets.map(p =>
+      `<div class="dest-item preset" onclick="selectDest('${p.name}','${p.label}')">${p.label}</div>`
+    ).join('');
+  }
+  ALL_STATIONS
+    .filter(s => !filter || s.name.toLowerCase().includes(lower))
+    .forEach(s => {
+      html += `<div class="dest-item" onclick="selectDest('${s.name}','${s.name}')">${s.name}</div>`;
+    });
+  list.innerHTML = html || '<div class="dest-item" style="color:var(--muted)">No stations found</div>';
+}
+
+function openDestPicker() {
+  document.getElementById('dest-search').value = '';
+  buildDestList();
+  document.getElementById('dest-overlay').classList.add('open');
+}
+function closeDestPicker(e) {
+  if (!e || e.target === document.getElementById('dest-overlay'))
+    document.getElementById('dest-overlay').classList.remove('open');
+}
+function filterDest(v) { buildDestList(v); }
+function selectDest(stationName, label) {
+  destStation = stationName;
+  document.getElementById('dest-icon').textContent  = '📍';
+  document.getElementById('dest-label').textContent = label.replace(/^.+?\s/, '').split(' (')[0] || label;
+  document.getElementById('dest-sub').textContent   = stationName;
+  closeDestPicker();
+}
+
+// ── Main flow ────────────────────────────────────────────────────
+async function findTrains() {
+  const btn     = document.getElementById('find-btn');
+  const status  = document.getElementById('status');
+  const results = document.getElementById('results');
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>';
+  results.classList.remove('show');
+
+  status.textContent = 'Getting your location…';
+  let pos;
+  try {
+    pos = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 12000 })
+    );
+  } catch(e) {
+    status.textContent = '⚠️ Location denied. Enable location access and try again.';
+    btn.disabled = false;
+    btn.textContent = MODES[mode].btnLabel;
+    btn.setAttribute('data-mode', mode);
+    return;
+  }
+
+  userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  status.textContent = 'Finding nearest stations…';
+
+  const nearby = ALL_STATIONS
+    .filter(s => s.name !== destStation)
+    .map(s => ({ ...s, userDist: haversine(userLoc, s), homeDist: haversine(HOME, s) }))
+    .filter(s => s.userDist <= MAX_RADIUS)
+    .sort((a, b) => a.userDist - b.userDist)
+    .slice(0, MAX_STNS);
+
+  if (!nearby.length) {
+    status.textContent = '⚠️ No SEPTA stations found within 8 miles of your location.';
+    btn.disabled = false;
+    btn.textContent = MODES[mode].btnLabel;
+    btn.setAttribute('data-mode', mode);
+    return;
+  }
+
+  status.textContent = `Checking trains from ${nearby.length} nearby stations…`;
+
+  const data = await Promise.all(
+    nearby.map(async stn => {
+      try {
+        const r = await fetch(`/api/nexttoarrive?from=${encodeURIComponent(stn.name)}&to=${encodeURIComponent(destStation)}&n=5`);
+        const trains = await r.json();
+        return { stn, trains: Array.isArray(trains) ? trains : [], err: null };
+      } catch(e) {
+        return { stn, trains: [], err: e.message };
+      }
+    })
+  );
+
+  renderResults(data);
+  btn.disabled = false;
+  btn.textContent = MODES[mode].btnLabel;
+  btn.setAttribute('data-mode', mode);
+  results.classList.add('show');
+  status.textContent = '';
+}
+
+// ── Render ───────────────────────────────────────────────────────
+function renderResults(data) {
+  const now = Date.now();
+  const cfg = MODES[mode];
+  const cards = document.getElementById('cards');
+  cards.innerHTML = '';
+
+  document.getElementById('results-label').textContent = `→ ${cfg.toLabel || destStation}`;
+
+  data.forEach(({ stn, trains, err }) => {
+    const toStnMins = travelMins(stn.userDist, WALK_MPH);
+    const maxDrHome = maxDriveMins(stn.homeDist);
+    const maxDrDest = maxDriveMins(haversine(HOME, STATION_MAP.get(destStation) || stn));
+
+    const sorted = trains
+      .map(t => ({
+        ...t,
+        depTime: parseTrainTime(t.orig_departure_time),
+        arrTime: parseTrainTime(t.orig_arrival_time),
+        delay:   parseDelay(t.orig_delay),
+      }))
+      .filter(t => t.depTime)
+      .sort((a, b) => a.depTime - b.depTime)
+      .slice(0, 4);
+
+    const rows = sorted.map(t => {
+      const minsUntilDep = (t.depTime - now) / 60000;
+      const canMake   = minsUntilDep > toStnMins + BUFFER_MIN;
+      const isTight   = !canMake && minsUntilDep > toStnMins - 1;
+      const isMissed  = minsUntilDep < -1;
+
+      const dotCls  = isMissed ? 'dot-red' : isTight ? 'dot-yellow' : canMake ? 'dot-green' : 'dot-red';
+      const depCls  = isMissed ? 'missed' : isTight ? 'tight' : canMake ? 'catchable' : 'missed';
+
+      const statusTxt = isMissed ? 'Departed'
+                      : t.delay === 0 ? 'On time'
+                      : `+${t.delay} min late`;
+      const statusCls = isMissed ? 't-status-gone' : t.delay === 0 ? 't-status-ok' : 't-status-late';
+
+      const durMins = t.depTime && t.arrTime ? Math.round((t.arrTime - t.depTime) / 60000) : null;
+      const direct  = t.isdirect === 'true' ? 'Direct' : 'Transfer';
+
+      return `
+        <div class="train-row">
+          <div class="t-dot ${dotCls}"></div>
+          <div class="t-body">
+            <div class="t-times">
+              <span class="t-depart ${depCls}">${fmt12(t.depTime)}</span>
+              <span class="t-arrow">→</span>
+              <span class="t-arrive ${depCls}">${fmt12(t.arrTime)}</span>
+              ${durMins ? `<span class="t-duration">${durMins}m</span>` : ''}
+            </div>
+            <div class="t-meta">
+              <span>${t.orig_line || ''}</span>
+              <span>·</span>
+              <span>${direct}</span>
+              <span>·</span>
+              <span class="${statusCls}">${statusTxt}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Max bar — varies by mode
+    let maxHtml = '';
+    if (cfg.maxMode === 'dropoff') {
+      maxHtml = `
+        <div class="max-bar">
+          <span class="max-icon">🚗</span>
+          <div class="max-text">Max drops off at <strong>${stn.name}</strong> — <span class="max-highlight">${fmtDist(stn.homeDist)} from home · ~${fmtMin(maxDrHome)}</span></div>
+        </div>`;
+    } else {
+      const firstCatchable = sorted.find(t => {
+        const minsUntilDep = (t.depTime - now) / 60000;
+        return minsUntilDep > toStnMins + BUFFER_MIN;
+      });
+
+      if (firstCatchable && firstCatchable.arrTime) {
+        const arrMs          = firstCatchable.arrTime - now;
+        const destStnCoords  = STATION_MAP.get(destStation) || stn;
+        const maxNeedsMin    = maxDriveMins(haversine(HOME, destStnCoords));
+        const returnMins     = maxDriveMins(haversine(destStnCoords, HOME));
+        const homeArrival    = new Date(firstCatchable.arrTime.getTime() + returnMins * 60000);
+        const leaveInMin     = Math.max(0, arrMs / 60000 - maxNeedsMin);
+        const urgency        = leaveInMin < 5 ? 'max-warn' : 'max-highlight';
+        const leaveMsg       = leaveInMin < 1
+          ? 'Max should leave <strong>now</strong>'
+          : `Max leaves in <span class="${urgency}">~${fmtMin(leaveInMin)}</span>`;
+
+        maxHtml = `
+          <div class="max-bar">
+            <span class="max-icon">🚗</span>
+            <div class="max-text">
+              Pick up at <strong>${destStation}</strong> at <strong>${fmt12(firstCatchable.arrTime)}</strong><br>
+              ${leaveMsg} · ~${fmtMin(maxNeedsMin)} drive<br>
+              🏠 Home by <strong>${fmt12(homeArrival)}</strong>
+            </div>
+          </div>`;
+      } else {
+        maxHtml = `
+          <div class="max-bar">
+            <span class="max-icon">🚗</span>
+            <div class="max-text">Pick up at <strong>${destStation}</strong> · ~${fmtMin(maxDrDest)} drive from home</div>
+          </div>`;
+      }
+    }
+
+    const card = document.createElement('div');
+    card.className = 'stn-card';
+    card.innerHTML = `
+      <div class="stn-head">
+        <div class="stn-top">
+          <div class="stn-name">${stn.name}</div>
+          <div class="stn-dist">${fmtDist(stn.userDist)}</div>
+        </div>
+        <div class="stn-meta">~${fmtMin(toStnMins)} walk from you · Max drives ${fmtDist(stn.homeDist)} from home</div>
+      </div>
+      ${err
+        ? `<div class="empty-row">Could not load trains: ${err}</div>`
+        : sorted.length === 0
+        ? `<div class="empty-row">No upcoming trains found on this route.</div>`
+        : rows}
+      ${maxHtml}`;
+
+    cards.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
